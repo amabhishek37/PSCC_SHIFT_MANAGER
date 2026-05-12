@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PSCC Shift Manager</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--s1:#161b22;--s2:#21262d;--brd:#30363d;--ac:#58a6ff;--gr:#3fb950;--or:#f78166;--yw:#d29922;--pu:#bc8cff;--mt:#8b949e;--txt:#e6edf3}
+body{font-family:Arial,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:14px}
+/* Layout */
+.app-shell{display:flex;min-height:100vh;flex-direction:column}
+.topbar{background:var(--s1);border-bottom:1px solid var(--brd);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:100}
+.topbar-title{font-size:17px;font-weight:bold;color:var(--ac)}
+.topbar-sub{font-size:10px;color:var(--mt);margin-top:2px}
+.main{display:flex;flex:1}
+.sidebar{width:270px;background:var(--s1);border-right:1px solid var(--brd);padding:16px;overflow-y:auto;flex-shrink:0;max-height:calc(100vh - 53px);position:sticky;top:53px}
+.content{flex:1;padding:20px;overflow-y:auto}
+/* Sidebar */
+.slabel{font-size:9px;color:var(--mt);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:bold;margin-top:14px}
+.slabel:first-child{margin-top:0}
+select{width:100%;background:var(--bg);border:1px solid var(--brd);color:var(--txt);padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:0;cursor:pointer;display:block}
+select:focus{outline:none;border-color:var(--ac)}
+.btn{width:100%;background:#238636;color:#fff;border:none;padding:10px;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;margin-top:14px;transition:background .15s;display:block}
+.btn:hover{background:#2ea043}
+.btn-sec{background:var(--s2);color:var(--ac);border:1px solid var(--brd)}
+.btn-sec:hover{background:var(--brd)}
+/* Overlays */
+.upload-overlay{position:fixed;inset:0;background:rgba(13,17,23,.97);display:flex;align-items:center;justify-content:center;z-index:999}
+.upload-card{background:var(--s1);border:1px solid var(--brd);border-radius:12px;padding:30px;max-width:460px;width:92%;text-align:center}
+.upload-card h2{color:var(--ac);font-size:21px;margin-bottom:6px}
+.upload-card p{color:var(--mt);font-size:12px;margin-bottom:18px;line-height:1.6}
+.file-drop{border:2px dashed var(--brd);border-radius:8px;padding:22px;cursor:pointer;transition:all .2s;margin-bottom:12px;position:relative}
+.file-drop:hover{border-color:var(--ac);background:rgba(88,166,255,.04)}
+.file-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.file-drop-icon{font-size:28px;margin-bottom:6px}
+.file-drop-text{font-size:12px;color:var(--mt);line-height:1.6}
+.upload-status{display:none;border-radius:6px;padding:10px 12px;font-size:12px;margin-top:10px;line-height:1.5;text-align:left;white-space:pre-wrap}
+.upload-status.ok{background:#0e2d1b;color:#3fb950;border:1px solid rgba(63,185,80,.3)}
+.upload-status.err{background:#2d1010;color:#f78166;border:1px solid rgba(247,129,102,.3)}
+.upload-status.info{background:#0c1e35;color:#79c0ff;border:1px solid rgba(88,166,255,.3)}
+
+/* Edit Modal */
+.edit-modal{position:fixed;inset:0;background:rgba(13,17,23,.9);display:none;align-items:center;justify-content:center;z-index:1000}
+.edit-card{background:var(--s1);border:1px solid var(--brd);border-radius:12px;padding:24px;width:320px;box-shadow:0 10px 30px rgba(0,0,0,0.5)}
+.edit-card h3{color:var(--txt);margin-bottom:10px}
+.edit-card input{width:100%;background:var(--bg);border:1px solid var(--brd);color:var(--txt);padding:10px;border-radius:6px;font-family:monospace;font-size:14px;text-transform:uppercase;margin-bottom:16px}
+.edit-card input:focus{outline:none;border-color:var(--ac)}
+.edit-btns{display:flex;gap:10px}
+
+/* Stats */
+.stats{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.stat-card{background:var(--s1);border:1px solid var(--brd);border-radius:8px;padding:10px 14px;flex:1;min-width:70px;text-align:center}
+.stat-val{font-size:22px;font-weight:bold;color:var(--ac);line-height:1}
+.stat-lbl{font-size:9px;color:var(--mt);text-transform:uppercase;margin-top:2px}
+/* Schedule grid */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;margin-bottom:14px}
+.day-card{background:var(--s2);border:1px solid var(--brd);border-left:3px solid var(--brd);border-radius:6px;padding:8px;cursor:pointer;transition:all .15s;user-select:none}
+.day-card:hover{border-color:var(--ac)!important;background:#1c2128}
+.day-card.off{background:#0f2a0f;border-left-color:rgba(63,185,80,.3)!important}
+.day-card.sA{border-left-color:var(--gr)}.day-card.sB{border-left-color:var(--ac)}.day-card.sC{border-left-color:var(--or)}
+.dc-date{font-size:9px;color:var(--mt);font-family:monospace}
+.dc-day{font-size:9px;color:var(--mt);margin-bottom:3px}
+.dc-sh{font-size:18px;font-weight:bold;line-height:1}
+.sA .dc-sh{color:var(--gr)}.sB .dc-sh{color:var(--ac)}.sC .dc-sh{color:var(--or)}
+.day-card.off .dc-sh{color:var(--gr);font-size:12px;margin-top:2px}
+.dc-desk{font-size:9px;color:var(--mt);margin-top:2px}
+/* Tabs */
+.ctabs{display:flex;border-bottom:1px solid var(--brd);margin-bottom:18px;flex-wrap:wrap}
+.ctab{padding:8px 18px;font-size:12px;font-weight:bold;color:var(--mt);cursor:pointer;border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;text-transform:uppercase;letter-spacing:1px}
+.ctab:hover{color:var(--txt)}.ctab.act{color:var(--ac);border-bottom-color:var(--ac)}
+.cpanel{display:none}.cpanel.act{display:block}
+/* Result section header */
+.sec-hdr{display:flex;align-items:center;gap:8px;margin:16px 0 10px;font-size:11px;color:var(--mt);text-transform:uppercase;letter-spacing:1px;font-weight:bold}
+.sec-hdr::after{content:"";flex:1;height:1px;background:var(--brd)}
+.cnt{background:var(--s2);border-radius:10px;padding:1px 8px;font-size:10px;color:var(--mt)}
+.cnt.g{background:#0e2d1b;color:var(--gr)}.cnt.y{background:#2d2000;color:var(--yw)}
+/* Result cards */
+.rc{background:var(--s1);border:1px solid var(--brd);border-left:3px solid var(--brd);border-radius:8px;padding:12px 14px;margin-bottom:8px}
+.rc.valid{border-left-color:var(--gr);background:#090f09}.rc.warn{border-left-color:var(--yw);background:#0f0c00}.rc.inf{border-left-color:var(--pu);background:#09070f}
+.rc-name{font-size:14px;font-weight:bold;margin-bottom:6px}
+/* Context row */
+.ctx{display:flex;flex-direction:column;gap:6px;margin:12px 0;background:var(--bg);padding:10px 14px;border-radius:6px;border:1px solid var(--brd)}
+/* Badges */
+.badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold}
+.bA{background:#0e2d1b;color:#3fb950;border:1px solid rgba(63,185,80,.4)}
+.bB{background:#0c1e35;color:#58a6ff;border:1px solid rgba(88,166,255,.4)}
+.bC{background:#2d1010;color:#f78166;border:1px solid rgba(247,129,102,.4)}
+.boff{background:#0f2a0f;color:#3fb950;border:1px solid rgba(63,185,80,.3)}
+.bd{background:var(--s2);color:var(--mt);border:1px solid var(--brd)}
+/* Give days table */
+.gtable{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+.gtable th{text-align:left;padding:5px 8px;color:var(--mt);font-size:9px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--brd);background:var(--bg)}
+.gtable td{padding:6px 8px;border-bottom:1px solid var(--s2);vertical-align:middle}
+.gtable tr.ccomp td{background:rgba(247,129,102,.06)}
+.med-box{background:var(--bg);border:1px solid var(--brd);border-radius:6px;padding:10px;margin-top:8px}
+.med-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--s2);flex-wrap:wrap;font-size:11px}
+.med-row:last-child{border-bottom:none}
+.ibox{background:#0c1e35;border:1px solid rgba(88,166,255,.3);border-radius:6px;padding:10px 12px;font-size:12px;color:#79c0ff;margin-bottom:12px;line-height:1.7}
+.wbox{background:#2d2000;border:1px solid rgba(158,106,3,.4);border-radius:6px;padding:10px 12px;font-size:12px;color:#d29922;margin-bottom:12px;line-height:1.7}
+.empty{text-align:center;padding:40px 20px;color:var(--mt);font-size:14px;line-height:1.8}
+details summary{cursor:pointer;font-size:11px;color:var(--mt);padding:5px 0;list-style:none}
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.rule{background:var(--s2);border:1px solid var(--brd);border-radius:6px;padding:12px}
+.rule-title{font-size:13px;font-weight:bold;color:var(--ac);margin-bottom:4px}
+.rule-desc{font-size:11px;color:var(--mt);line-height:1.6}
+.sinfo{margin-top:14px;font-size:11px;color:var(--mt);line-height:1.8;padding:10px;background:var(--bg);border-radius:6px;border:1px solid var(--brd)}
+@media(max-width:700px){
+  .main{flex-direction:column}
+  .sidebar{width:100%;border-right:none;border-bottom:1px solid var(--brd);max-height:none;position:static}
+  .sgrid{grid-template-columns:repeat(auto-fill,minmax(80px,1fr))}
+}
+</style>
+</head>
+<body>
+
+<div class="upload-overlay" id="uploadOverlay">
+  <div class="upload-card">
+    <div style="font-size:32px;margin-bottom:10px">&#9889;</div>
+    <h2>PSCC Shift Manager</h2>
+    <p>Upload your monthly shift schedule (.xlsx) to get started.<br>3-Way Bridging and C-Shift rules are fully automated.</p>
+
+    <div class="file-drop" id="fileDrop">
+      <input type="file" id="xlsxFile" accept=".xlsx,.xls,.pdf">
+      <div class="file-drop-text">
+        <b style="color:var(--txt)">Drop your file here or click to browse</b><br>
+        <span style="color:#3fb950">&#10003; Reads Table 1 sheet &bull; Auto-detects operators</span>
+      </div>
+    </div>
+    <div id="uploadStatus" class="upload-status"></div>
+    <div style="margin:14px 0;color:var(--mt);font-size:11px">&#8213; OR &#8213;</div>
+    <button class="btn" onclick="loadBuiltin();hideOverlay()">&#128197; Use Pre-loaded May 2026 Schedule</button>
+  </div>
+</div>
+
+<div class="edit-modal" id="editModal">
+    <div class="edit-card">
+        <h3 id="editTitle">Edit Shift</h3>
+        <p style="font-size:11px; color:var(--mt)">Leave blank for an OFF day.</p>
+        <input type="text" id="editInput" placeholder="e.g. A1, B33-2, OFF">
+        <div class="edit-btns">
+            <button class="btn" onclick="saveEdit()">Save Change</button>
+            <button class="btn btn-sec" style="margin-top:14px" onclick="closeEdit()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="app-shell">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title">&#9889; PSCC Shift Manager</div>
+      <div class="topbar-sub">Power System Control Centre &middot; Live Editor & Export</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span id="monthBadge" style="background:var(--s2);border:1px solid var(--brd);padding:4px 12px;border-radius:6px;font-size:12px;color:var(--ac);font-weight:bold">MAY 2026</span>
+      <button class="btn" style="width:auto;padding:5px 12px;font-size:11px;margin:0;background:#1f6feb" onclick="exportExcel()">⬇️ Export Excel</button>
+      <button class="btn btn-sec" style="width:auto;padding:5px 12px;font-size:11px;margin:0" onclick="document.getElementById('uploadOverlay').style.display='flex'">📁 Upload</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <div class="slabel">My Name</div>
+      <select id="selName" onchange="onNameChange()"></select>
+      
+      <div class="slabel">Date</div>
+      <select id="selDate" onchange="onDateChange()"></select>
+      
+      <div class="slabel">I Want To</div>
+      <select id="selType" onchange="findOptions()">
+        <option value="shift">Swap my shift with someone</option>
+        <option value="off_want">Get this day OFF (I am working)</option>
+        <option value="off_work">Work this day (I am OFF)</option>
+      </select>
+      
+      <div class="slabel">Desired Shift Filter</div>
+      <select id="selDesired" onchange="findOptions()">
+        <option value="ANY">Any shift</option>
+        <option value="A">A-Shift only</option>
+        <option value="B">B-Shift only</option>
+        <option value="C">C-Shift only</option>
+      </select>
+      
+      <button class="btn" onclick="findOptions()">&#128269; FIND ALL OPTIONS</button>
+      
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--brd)">
+          <div class="slabel">Live Schedule Editor</div>
+          <button id="editToggleBtn" class="btn btn-sec" style="margin-top:0" onclick="toggleEditMode()">✏️ Enable Edit Mode</button>
+          <div style="font-size:10px; color:var(--mt); margin-top:8px; line-height:1.5">
+              Turn on to edit any shift in the schedule grid dynamically. Changes log below.
+          </div>
+      </div>
+
+      <div class="sinfo" id="sidebarInfo"></div>
+    </div>
+
+    <div class="content">
+      <div class="ctabs">
+        <button class="ctab act" id="ctab-sched" onclick="switchTab('sched')">MY SCHEDULE</button>
+        <button class="ctab" id="ctab-results" onclick="switchTab('results')">SWAP OPTIONS</button>
+        <button class="ctab" id="ctab-log" onclick="switchTab('log')">CHANGE LOG</button>
+        <button class="ctab" id="ctab-rules" onclick="switchTab('rules')">RULES</button>
+      </div>
+
+      <div class="cpanel act" id="cpanel-sched">
+        <div id="schedOut"></div>
+      </div>
+
+      <div class="cpanel" id="cpanel-results">
+        <div id="resultsOut" class="empty">&#128269; Pick a date on the left and click<br><b>FIND ALL OPTIONS</b></div>
+      </div>
+      
+      <div class="cpanel" id="cpanel-log">
+        <div class="rc" style="border-left-color:var(--gr); background:var(--bg); margin-bottom:20px;">
+          <h3 style="color:var(--gr); font-size:14px; margin-bottom:12px; text-transform:uppercase">&#10003; Quick Log: Mutual Exchange</h3>
+          <p style="font-size:11px; color:var(--mt); margin-bottom:12px">Select dates and operators. The dropdowns automatically show their current shift on that day so you can verify the trade.</p>
+          <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <div style="flex:1; min-width:120px">
+              <label class="slabel">Swap Date 1</label>
+              <select id="msD1" onchange="updateMutualSwapOperators()"></select>
+            </div>
+            <div style="flex:1; min-width:120px">
+              <label class="slabel">Operator 1</label>
+              <select id="msP1"></select>
+            </div>
+            <div style="flex:1; min-width:120px">
+              <label class="slabel">Operator 2</label>
+              <select id="msP2"></select>
+            </div>
+            <div style="flex:1; min-width:120px">
+              <label class="slabel">Swap Date 2 (Optional)</label>
+              <select id="msD2"></select>
+            </div>
+          </div>
+          <button class="btn" style="width:auto; padding:8px 16px; margin-top:14px; background:var(--gr)" onclick="applyMutualSwap()">Apply &amp; Log Swap</button>
+        </div>
+
+        <div id="logOut"></div>
+      </div>
+
+      <div class="cpanel" id="cpanel-rules">
+        <div class="rules-grid">
+          <div class="rule"><div class="rule-title">No Direct 33kV Swap</div><div class="rule-desc">If you are on an 11kV desk, you cannot swap directly with a 33kV desk. The app will automatically find a 3-way bridge mediator for you.</div></div>
+          <div class="rule"><div class="rule-title">Same-Shift Desk Swap</div><div class="rule-desc">A 33kV-eligible person on an 11kV desk can swap desks with the 33kV operator on the identical shift, freeing up the 11kV desk.</div></div>
+          <div class="rule"><div class="rule-title">Desk 1 Strict Eligibility</div><div class="rule-desc">33-1 Desk can only be operated by specific certified individuals.</div></div>
+          <div class="rule"><div class="rule-title">C &rarr; A/B Forbidden</div><div class="rule-desc">Sequence rule: A or B shift cannot follow a C shift. The engine checks the pre and post days for everyone automatically.</div></div>
+          <div class="rule"><div class="rule-title">Optional C-Shift Comp</div><div class="rule-desc">When swapping your C-shift, the app suggests optional future dates where you can take their C-shift in return.</div></div>
+          <div class="rule"><div class="rule-title">Pragnya 33kV Restriction</div><div class="rule-desc">Pragnya can strictly only be assigned to 33kV desks.</div></div>
+          <div class="rule"><div class="rule-title">Female A-Shift Only</div><div class="rule-desc">Female operators are restricted to A-Shift in mutual swaps.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// RAW DATA 
+var EMB={"dates":[{"label":"30-Apr","day":"Thu"},{"label":"01-May","day":"Fri"},{"label":"02-May","day":"Sat"},{"label":"03-May","day":"Sun"},{"label":"04-May","day":"Mon"},{"label":"05-May","day":"Tue"},{"label":"06-May","day":"Wed"},{"label":"07-May","day":"Thu"},{"label":"08-May","day":"Fri"},{"label":"09-May","day":"Sat"},{"label":"10-May","day":"Sun"},{"label":"11-May","day":"Mon"},{"label":"12-May","day":"Tue"},{"label":"13-May","day":"Wed"},{"label":"14-May","day":"Thu"},{"label":"15-May","day":"Fri"},{"label":"16-May","day":"Sat"},{"label":"17-May","day":"Sun"},{"label":"18-May","day":"Mon"},{"label":"19-May","day":"Tue"},{"label":"20-May","day":"Wed"},{"label":"21-May","day":"Thu"},{"label":"22-May","day":"Fri"},{"label":"23-May","day":"Sat"},{"label":"24-May","day":"Sun"},{"label":"25-May","day":"Mon"},{"label":"26-May","day":"Tue"},{"label":"27-May","day":"Wed"},{"label":"28-May","day":"Thu"},{"label":"29-May","day":"Fri"},{"label":"30-May","day":"Sat"},{"label":"31-May","day":"Sun"}],"schedule":{"ANANYA":["","A4","A1","A2","A6","","","A1","A2","","","A5","A6","A3","A4","","A1","A2","A3","A4","A5","","","A3","A1","A5","A6","A5","","","A4","A3"],"SWATIREKHA":["","","L","","A5","A1","A4","A6","A3","","","A4","A1","A2","A5","A6","A3","","","A1","A4","","A6","A2","A4","A6","A2","","","A3","A5","A1"],"ROHAN":["B6","C2","C3","","","B6","B1","B4","C5","C3","","","B6","B1","B6","B2","C3","","","B4","B5","C1","C2","","","B6","B1","C2","C6","","","A4"],"RANJAN":["C2","C5","","A6","A4","C1","","","A5","A4","A2","B6","C3","","","A1","A5","B2","C4","C3","","","A5","C1","C2","","","B6","B2","B3","C5",""],"BISWAJIT":["A5","A2","B5","C4","C6","","","A2","B1","B5","C3","C4","","","A3","B4","B1","C5","C2","","","A3","A4","B6","B1","C2","","","C5","C1","","B3"],"DEEPAK":["A2","C4","C5","","","A2","A3","A5","C4","C6","","","A2","A5","A2","C3","","","A6","A2","A3","A5","A3","","","A3","A5","A2","C3","C6","","C4"],"PRAVAT":["C4","","","A1","A3","B5","C2","C4","","","A6","A3","B2","C5","C1","","B4","B3","B6","C1","C2","","","A5","B3","B1","C2","C6","","","B4","B2"],"BALADEV":["C1","","","B5","B4","B2","C3","","B6","B1","B2","C3","C4","","","B5","B2","B1","C3","C6","","","B4","B2","C5","","","B1","B4","B6","C3","C2"],"ASHWINI":["C3","","B4","B2","B3","C4","C5","","","B4","B6","B3","C2","C4","","","A2","B5","B3","B2","C1","","","A4","B6","B2","C5","C3","","","B3","C6"],"SURAJ":["B3","B4","B3","C2","C4","","","","B4","B3","B4","C5","","B2","B3","B3","C4","C2","","","B1","B3","B2","C6","C4","","","B5","B3","B4","C2",""],"MADHULIKA":["A1","","","A33-3,4","A1","A3","A5","","A6","A33-3,4","A1","","A3","A33-2","A6","A33-3,4","A33-3,4","","","A3","A33-2","A6","A33-3,4","A33-2","","","A1","A3","A5","A2","","A6"],"PRAVATI":["A3","A3","A33-2","A4","","A4","A2","A3","A33-2","","","A2","A33-2","","","A4","","A3","A1","A33-3,4","A2","A1","","","A3","A4","A3","A33-2","A2","","A1","A2"],"MANEESHA":["","A33-2","A5","A3","A33-3,4","","A1","A33-2","","","A33-3,4","A1","A5","A4","A33-2","","","A33-3,4","A2","A6","","","A33-2","A33-3,4","A6","A2","","","A1","A5","A2","A5"],"SUMIT":["B1","C3","C6","","","A5","B2","B6","C33-3,4","C1","","","B33-2","B5","B1","C4","C6","","","B3","B33-3,4","B2","C5","C4","","","A4","A1","A6","B33-3,4","C1",""],"MANMOHAN":["C6","","B1","B6","B2","B3","C6","","","A1","A5","B33-2","C33-3,4","C3","","","A33-2","A5","B1","C33-2","C3","","","A6","B4","C5","C33-2","","","A33-3,4","A6","B1"],"PRADYUMNA":["","","L","","L","A6","C33-2","C33-3,4","","A3","B33-2","B5","A4","","","A2","B5","B33-2","C6","","","A4","C33-2","C5","C1","","","B33-2","B6","C33-2","C6","C3"],"SUBHENDU":["B2","B1","B6","C33-2","","","A6","B2","B33-3,4","C5","C1","","","A33-3,4","B33-2","C6","C2","","","B33-3,4","C5","C3","","","A33-3,4","B33-2","C1","C5","","B2","B6",""],"AKSHAY":["","","A2","B3","B5","C3","C4","","","A6","C33-2","C2","","B3","C4","","","B4","B33-2","B5","C33-2","","B3","B4","B5","C33-3,4","C3","","","A4","B33-2","C33-3,4"],"SUSHANTA":["","B3","C33-3,4","C5","C3","","","A4","C3","C2","C5","","","A1","B4","C33-2","C5","C3","","","B6","C2","C3","C33-2","","","B4","B4","C33-3,4","C5","C4",""],"JAGANNATH":["C5","","","B4","B33-2","B4","C33-3,4","C3","","","B33-3,4","B1","B4","C33-2","C2","","","A33-2","B5","C4","","B1","B5","B33-3,4","C6","C3","","","A4","A1","B5","C1"],"GANESHWAR":["C33-2","","L","","B1","C33-2","C1","","B5","B33-3,4","B3","B2","B5","","","B1","B33-2","B6","B4","C33-3,4","","","A2","A1","C33-2","C6","","","A33-3,4","A6","B1","C5"],"SATYAPRAKASH":["C33-3,4","","","B1","C2","C5","","B33-2","B3","B6","C2","C33-3,4","","","A1","A5","B33-3,4","C4","C5","","","A2","A1","B5","B2","","B33-3,4","C33-3,4","C4","","B33-3,4","B4"],"SIDHARTH":["C33-1","C1","","","A2","A33-2","A33-1","C5","","A33-1","A4","A33-3,4","C1","C33-1","","","A33-1","A1","C33-1","","A6","A33-2","C4","","","A33-3,4","A33-1","A4","C33-1","C3","","A33-3,4"],"SHIVLESH":["","B2","B33-3,4","C33-1","C1","","","A33-3,4","A33-1","A33-2","C33-3,4","C1","","","B33-3,4","B33-2","C1","C33-3,4","","","B33-2","B4","B33-1","B33-1","C33-3,4","","","A6","B33-2","B33-1","C33-3,4",""],"BIBHUTI":["","","","","L","L","L","","B33-2","B2","B5","B33-3,4","C5","","","A33-1","B6","B33-1","B33-3,4","C2","","B33-3,4","B33-3,4","C2","C33-1","","","A33-3,4","A33-2","B1","C33-1","C33-2"],"ONKAR":["A6","B33-3,4","C2","C33-3,4","","","A33-3,4","B1","C33-1","C33-2","","","B3","B33-1","B5","C33-3,4","C33-1","","","B33-1","B3","C33-2","C1","","","A33-1","B2","B33-1","B33-3,4","B33-2","","B33-3,4"],"SUDIP":["B33-1","C33-3,4","C33-1","","","B33-2","B4","C33-2","C2","","","B33-1","B33-3,4","C6","C33-1","","","A33-1","A4","B33-2","C33-3,4","C6","","B1","B33-1","B33-3,4","B33-2","C33-1","","","A33-3,4","B33-2"],"MANOJ":["","A33-3,4","A4","B33-1","C33-2","C33-3,4","","","B33-1","B33-2","B33-1","C33-1","C33-2","","","A33-2","B33-1","B33-3,4","C1","C33-1","","","A33-1","B33-2","B33-3,4","C33-2","C6","","","A33-1","B33-1",""],"ANTONY":["A33-1","A6","A33-3,4","A33-2","","A33-1","C33-1","C6","","","A33-2","A6","A33-1","","C6","C33-1","","","A33-2","A5","C33-1","C33-3,4","","","A33-1","A33-2","C33-3,4","C33-2","","","A33-2","A33-1"],"SHYAM":["B33-3,4","C33-2","C1","","B33-1","B33-3,4","B-SC","C1","C6","","","A33-1","B-SC","B33-3,4","C33-2","C5","","","A33-3,4","B1","B-SC","B33-1","C6","","","B33-1","B5","B3","C33-2","C33-1","",""],"MANORANJAN":["A33-2","A33-1","","A5","A33-1","A33-3,4","A33-2","A33-1","A33-3,4","","","","A-SC","A-SC","A33-3,4","","","A-SC","A5","A33-1","A-SC","","","A33-1","A33-2","A1","A33-3,4","","A33-1","","A-SC","A-SC"],"BHUBANENDRA":["B-SC","B-SC","B-SC","C1","C33-1","","","A-SC","A-SC","B-SC","B1","C6","","","A33-1","B-SC","B-SC","C33-1","C33-3,4","","","A-SC","C33-1","C33-1","","","B-SC","B-SC","B-SC","C2","","B33-1"],"PRITAM":["A-SC","C33-1","C33-2","","B-SC","B-SC","B6","C33-1","","B33-1","B-SC","B-SC","C33-1","C33-3,4","","","A-SC","B-SC","B-SC","C5","","","A-SC","A-SC","B-SC","C1","C33-1","","","L","","B-SC"],"SHREEKANTA":["","","A33-1","B33-2","B33-3,4","C33-1","","B33-1","C33-2","C33-3,4","","","A33-3,4","B4","C33-3,4","C2","","","B33-1","B-SC","B4","C33-1","","B-SC","B33-2","C33-1","","","B1","B-SC","B-SC","C33-1"],"SUBASISH":["B33-2","B33-1","","A-SC","A-SC","B33-1","B33-2","B33-3,4","","","A-SC","A-SC","B33-1","B-SC","B-SC","B33-1","","","A-SC","A-SC","B33-1","B-SC","B-SC","","","B-SC","B33-1","B33-3,4","","","A33-1","A33-2"],"PRAGNYA":["A33-3,4","A-SC","A-SC","A33-1","A33-2","A-SC","A-SC","","","A-SC","A33-1","A33-2","","A33-1","A-SC","A-SC","","","A33-1","A33-2","A33-1","A33-3,4","","","A-SC","A-SC","A33-2","","A-SC","A-SC","",""],"SONAL":["G","A1","B33-1","B-SC","","","G","B-SC","B-SC","C33-1","C33-1","","","B6","B33-1","B6","C33-3,4","C33-2","","","A1","A33-1","C33-3,4","C33-3,4","","","A-SC","A-SC","B33-1","G","G",""],"RABI":["","B33-2","G","","G","G","B33-1","G","G","","","G","G","G","G","G","","","G","G","G","G","G","","","G","G","A33-1","G","A33-2","",""],"A.MOHAPATRA":["A-PM","","A-PM","","A-PM","A-PM","A-PM","A-PM","A-PM","","","A-PM","A-PM","A-PM","","A-PM","A-PM","","A-PM","A-PM","A-PM","A-PM","A-PM","","","A-PM","A-PM","","A-PM","A-PM","A-PM",""],"K.K.NAYAK":["A4","B5","B33-2","C3","","","B33-3,4","B3","B2","A-PM","C4","","","A6","A-PM","A3","C33-2","C6","","","B2","B33-2","B6","C3","","B4","B3","A-PM","C2","C4","",""],"PC GAYA":["","A5","A3","B33-3,4","C5","C2","","","A4","A2","A-PM","C33-2","","","C3","C1","","A-PM","C33-2","","","B6","B33-2","B3","A-PM","C4","","","A3","B5","B2","A-PM"],"SK SAHOO":["","A-PM","A6","A-PM","C33-3,4","C6","","","A1","A5","C6","","","B33-2","B2","B33-3,4","B3","C1","","","A33-3,4","B5","B1","A-PM","C3","","","B2","B5","C33-3,4","C33-2",""],"ABHISHEK":["B4","C6","C4","","B6","B1","B5","C2","","","A3","B4","C6","C1","","","A6","A4","","B6","C4","C5","","","A2","B5","C4","C1","","","A3","B6"],"DEBADUTTA":["B5","B6","B2","C6","","","B3","B5","C1","C4","","","B1","C2","C5","","A4","A6","B2","","C6","C4","","","A5","B3","B6","C4","C1","","","B5"]},"names":["ANANYA","SWATIREKHA","ROHAN","RANJAN","BISWAJIT","DEEPAK","PRAVAT","BALADEV","ASHWINI","SURAJ","MADHULIKA","PRAVATI","MANEESHA","SUMIT","MANMOHAN","PRADYUMNA","SUBHENDU","AKSHAY","SUSHANTA","JAGANNATH","GANESHWAR","SATYAPRAKASH","SIDHARTH","SHIVLESH","BIBHUTI","ONKAR","SUDIP","MANOJ","ANTONY","SHYAM","MANORANJAN","BHUBANENDRA","PRITAM","SHREEKANTA","SUBASISH","PRAGNYA","SONAL","RABI","A.MOHAPATRA","K.K.NAYAK","PC GAYA","SK SAHOO","ABHISHEK","DEBADUTTA"],"desk33eligible":["AKSHAY","ANTONY","BHUBANENDRA","BIBHUTI","GANESHWAR","JAGANNATH","K.K.NAYAK","MADHULIKA","MANEESHA","MANMOHAN","MANOJ","MANORANJAN","ONKAR","PC GAYA","PRADYUMNA","PRAGNYA","PRAVATI","PRITAM","RABI","SATYAPRAKASH","SHIVLESH","SHREEKANTA","SHYAM","SIDHARTH","SK SAHOO","SONAL","SUBASISH","SUBHENDU","SUDIP","SUMIT","SUSHANTA"],"apmNames":["A.MOHAPATRA","K.K.NAYAK","PC GAYA","SK SAHOO"],"scNames":["BHUBANENDRA","MANORANJAN","PRAGNYA","PRITAM","SHREEKANTA","SHYAM","SONAL","SUBASISH"],"gNames":["RABI","SONAL"],"femaleAOnly":["ANANYA","SWATIREKHA","MANEESHA","MADHULIKA","PRAVATI","MANORANJAN","PRAGNYA"],"desk1eligible":["ANTONY","BHUBANENDRA","BIBHUTI","MANOJ","MANORANJAN","ONKAR","PRAGNYA","PRITAM","RABI","SHIVLESH","SHREEKANTA","SHYAM","SIDHARTH","SONAL","SUBASISH","SUDIP"],"deskAny33eligible":["AKSHAY","ANTONY","BHUBANENDRA","BIBHUTI","GANESHWAR","JAGANNATH","K.K.NAYAK","MADHULIKA","MANEESHA","MANMOHAN","MANOJ","MANORANJAN","ONKAR","PC GAYA","PRADYUMNA","PRAGNYA","PRAVATI","PRITAM","RABI","SATYAPRAKASH","SHIVLESH","SHREEKANTA","SHYAM","SIDHARTH","SK SAHOO","SONAL","SUBASISH","SUBHENDU","SUDIP","SUMIT","SUSHANTA"]};
+
+var D=[], N=[], RAW_SCHEDULE={};
+var E1=new Set(), EA=new Set(), BAPM=new Set(), BSC=new Set(), BG=new Set();
+var FEM=new Set(["ANANYA","SWATIREKHA","MANEESHA","MADHULIKA","PRAVATI","MANORANJAN","PRAGNYA"]);
+
+var isEditMode = false;
+var editTargetPerson = "";
+var editTargetDay = -1;
+var CHANGE_LOG = []; 
+
+function loadBuiltin(){
+  D = EMB.dates; 
+  N = EMB.names;
+  E1 = new Set(EMB.desk1eligible);
+  EA = new Set(EMB.deskAny33eligible);
+  BAPM = new Set(EMB.apmNames);
+  BSC = new Set(EMB.scNames);
+  BG = new Set(EMB.gNames);
+  RAW_SCHEDULE = {};
+  N.forEach(function(n) {
+      var rawArr = EMB.schedule[n];
+      if (!rawArr) rawArr = new Array(D.length).fill(null);
+      RAW_SCHEDULE[n] = rawArr.map(function(s) { return (s && s !== "L") ? s : null; });
+  });
+  CHANGE_LOG = [];
+  populateSwapForm();
+  renderLog();
+}
+
+function SL(c){return c?c[0]:null;}
+function is33(c){return !!(c&&/^[A-C]33/.test(c));}
+
+function checkEligibility(person, code) {
+  if (!code || code === "OFF") return {ok: true, why: ""};
+  var base = code.charAt(0);
+  if (base === 'G' || code.indexOf("-SC") >= 0 || code.indexOf("ASC") >= 0 || code.indexOf("BSC") >= 0 || code.indexOf("-PM") >= 0) {
+      return {ok: false, why: "G/SC/PM shift cannot be swapped"};
+  }
+  if (FEM.has(person) && base !== 'A') {
+      return {ok: false, why: "Female staff restricted to A-Shift"};
+  }
+  if (person === "PRAGNYA" && !is33(code)) {
+      return {ok: false, why: "PRAGNYA can only sit on 33kV desk"};
+  }
+  if (code.indexOf("33-1") >= 0 && !E1.has(person)) {
+      return {ok: false, why: "Lacks 33-1 Desk certification"};
+  }
+  if (is33(code) && !EA.has(person)) {
+      return {ok: false, why: "Lacks 33kV certification"};
+  }
+  return {ok: true, why: ""};
+}
+
+function checkSequence(person, testShiftCode, dayIdx) {
+  var prevShift = RAW_SCHEDULE[person][dayIdx - 1];
+  var nextShift = RAW_SCHEDULE[person][dayIdx + 1];
+  var tPrev = prevShift ? prevShift.charAt(0) : '';
+  var tNext = nextShift ? nextShift.charAt(0) : '';
+  var tTest = testShiftCode ? testShiftCode.charAt(0) : '';
+
+  if (tPrev === 'C' && (tTest === 'A' || tTest === 'B')) {
+      return "Cannot do " + tTest + " immediately after C";
+  }
+  if (tTest === 'C' && (tNext === 'A' || tNext === 'B')) {
+      return "Cannot do C immediately before " + tNext;
+  }
+  return null;
+}
+
+function bCls(c){
+  if(!c || c==="OFF") return "boff";
+  var l = c.charAt(0);
+  if(l==="A") return "bA";
+  if(l==="B") return "bB";
+  if(l==="C") return "bC";
+  return "bd";
+}
+
+function bdg(c){
+  if(!c || c==="OFF") return "<span class=\"badge boff\">OFF</span>";
+  return "<span class=\"badge "+bCls(c)+"\">"+c+"</span>";
+}
+
+function doShift(me, dayIdx, desired) {
+  var myShift = RAW_SCHEDULE[me][dayIdx];
+  if (!myShift) return {error: "You are OFF on this day. Use 'Want to WORK' mode."};
+  var results = { direct: [], bridged: [], deskSwap: [], blocked: [] };
+
+  N.forEach(function(partner) {
+      if (partner === me) return;
+      var theirShift = RAW_SCHEDULE[partner][dayIdx];
+      if (!theirShift) return; 
+      if (['G'].indexOf(theirShift.charAt(0)) >= 0 || theirShift.indexOf('SC') >= 0 || theirShift.indexOf('PM') >= 0) {
+          results.blocked.push({partner: partner, theirShift: theirShift, reason: "SC/APM/G excluded"});
+          return;
+      }
+      if (desired && desired !== 'ANY' && theirShift.charAt(0) !== desired) return;
+
+      var meErr = checkSequence(me, theirShift, dayIdx);
+      var pErr = checkSequence(partner, myShift, dayIdx);
+      var meElig = checkEligibility(me, theirShift);
+      var pElig = checkEligibility(partner, myShift);
+
+      // C-Shift Compensation Logic for Direct Swaps
+      var cCompDays = [];
+      if (myShift.charAt(0) === 'C' && theirShift.charAt(0) !== 'C') {
+          D.forEach(function(dObj, idx) {
+              if (idx === dayIdx || idx === 0) return;
+              var pShiftOther = RAW_SCHEDULE[partner][idx];
+              var mShiftOther = RAW_SCHEDULE[me][idx] || 'OFF';
+              if (pShiftOther && pShiftOther.charAt(0) === 'C') {
+                  if (!checkSequence(me, pShiftOther, idx) && !checkSequence(partner, mShiftOther, idx) &&
+                      checkEligibility(me, pShiftOther).ok && checkEligibility(partner, mShiftOther).ok) {
+                      cCompDays.push({ date: dObj.label, myNewShift: pShiftOther, theirNewShift: mShiftOther });
+                  }
+              }
+          });
+      }
+
+      if (!meErr && !pErr && meElig.ok && pElig.ok) {
+          results.direct.push({ partner: partner, theirShift: theirShift, cCompDays: cCompDays });
+      }
+      else if (!meErr && !pErr && pElig.ok && !meElig.ok && is33(theirShift)) {
+          var bridges = [];
+          N.forEach(function(bridge) {
+              if (bridge === me || bridge === partner) return;
+              var bShift = RAW_SCHEDULE[bridge][dayIdx];
+              if (!bShift || is33(bShift) || bShift.charAt(0) !== theirShift.charAt(0)) return;
+
+              if (!checkSequence(bridge, theirShift, dayIdx) && checkEligibility(bridge, theirShift).ok &&
+                  !checkSequence(me, bShift, dayIdx) && checkEligibility(me, bShift).ok) {
+                  bridges.push({ name: bridge, shift: bShift });
+              }
+          });
+          if (bridges.length > 0) {
+              results.bridged.push({ partner: partner, theirShift: theirShift, bridges: bridges, cCompDays: cCompDays });
+          } else {
+              results.blocked.push({ partner: partner, theirShift: theirShift, reason: "Needs 33kV bridge, but no 11kV mediators available." });
+          }
+      }
+      else if (myShift.charAt(0) === theirShift.charAt(0) && is33(theirShift) && !is33(myShift)) {
+          if (checkEligibility(me, theirShift).ok && checkEligibility(partner, myShift).ok) {
+              results.deskSwap.push({ partner: partner, theirShift: theirShift, cCompDays: cCompDays });
+          }
+      }
+      else {
+          var reasons = [meErr, pErr, meElig.why, pElig.why].filter(Boolean);
+          results.blocked.push({ partner: partner, theirShift: theirShift, reason: reasons.join('; ') });
+      }
+  });
+  return results;
+}
+
+function doOffWant(me, dayIdx, desired) {
+  var myShift = RAW_SCHEDULE[me][dayIdx];
+  if (!myShift) return {error: "You are already OFF. Use 'Want to WORK' mode."};
+  var results = { direct: [], bridged: [], blocked: [] };
+
+  N.forEach(function(partner) {
+      if (partner === me) return;
+      var theirShift = RAW_SCHEDULE[partner][dayIdx];
+      if (theirShift) return; 
+
+      var pErr = checkSequence(partner, myShift, dayIdx);
+      var pElig = checkEligibility(partner, myShift);
+      var pCanTakeDirect = !pErr && pElig.ok;
+      var pNeedsBridge = !pErr && !pElig.ok && is33(myShift);
+
+      if (!pCanTakeDirect && !pNeedsBridge) {
+          results.blocked.push({ partner: partner, theirShift: 'OFF', reason: pErr || pElig.why });
+          return;
+      }
+
+      var bridges = [];
+      if (pNeedsBridge) {
+          N.forEach(function(bridge) {
+              if (bridge === me || bridge === partner) return;
+              var bShift = RAW_SCHEDULE[bridge][dayIdx];
+              if (!bShift || is33(bShift) || bShift.charAt(0) !== myShift.charAt(0)) return;
+
+              if (!checkSequence(bridge, myShift, dayIdx) && checkEligibility(bridge, myShift).ok &&
+                  !checkSequence(partner, bShift, dayIdx) && checkEligibility(partner, bShift).ok) {
+                  bridges.push({ name: bridge, shift: bShift });
+              }
+          });
+          if (bridges.length === 0) {
+              results.blocked.push({ partner: partner, theirShift: 'OFF', reason: "Needs 33kV bridge, but no 11kV mediators available." });
+              return;
+          }
+      }
+
+      var giveDays = [];
+      D.forEach(function(dObj, idx) {
+          if (idx === dayIdx || idx === 0) return;
+          if (RAW_SCHEDULE[me][idx]) return; 
+          var pShiftOnOd = RAW_SCHEDULE[partner][idx];
+          if (!pShiftOnOd) return; 
+          if (desired && desired !== 'ANY' && pShiftOnOd.charAt(0) !== desired) return;
+
+          if (!checkSequence(me, pShiftOnOd, idx) && checkEligibility(me, pShiftOnOd).ok) {
+              giveDays.push({ 
+                  date: dObj.label, 
+                  myNewShift: pShiftOnOd,
+                  theirNewShift: 'OFF',
+                  isCComp: pShiftOnOd === 'C3' && myShift.charAt(0) === 'C'
+              });
+          }
+      });
+
+      if (giveDays.length > 0) {
+          giveDays.sort(function(a, b) { return (b.isCComp ? 1:0) - (a.isCComp ? 1:0); });
+          if (pCanTakeDirect) {
+              results.direct.push({ partner: partner, theirShift: 'OFF', giveDays: giveDays });
+          } else {
+              results.bridged.push({ partner: partner, theirShift: 'OFF', bridges: bridges, giveDays: giveDays });
+          }
+      } else {
+          results.blocked.push({ partner: partner, theirShift: 'OFF', reason: "Partner can cover, but you have no valid give-days." });
+      }
+  });
+  return results;
+}
+
+function doOffWork(me, dayIdx, desired) {
+  var myShift = RAW_SCHEDULE[me][dayIdx];
+  if (myShift) return {error: "You are working (" + myShift + "). Use 'Want OFF' mode."};
+  var results = { direct: [], bridged: [], blocked: [] };
+
+  N.forEach(function(partner) {
+      if (partner === me) return;
+      var theirShift = RAW_SCHEDULE[partner][dayIdx];
+      if (!theirShift || ['G'].indexOf(theirShift.charAt(0)) >= 0 || theirShift.indexOf('SC') >= 0 || theirShift.indexOf('PM') >= 0) return;
+      if (desired && desired !== 'ANY' && theirShift.charAt(0) !== desired) return;
+
+      var meErr = checkSequence(me, theirShift, dayIdx);
+      var meElig = checkEligibility(me, theirShift);
+      var meCanTakeDirect = !meErr && meElig.ok;
+      var meNeedsBridge = !meErr && !meElig.ok && is33(theirShift);
+
+      if (!meCanTakeDirect && !meNeedsBridge) {
+          results.blocked.push({ partner: partner, theirShift: theirShift, reason: meErr || meElig.why });
+          return;
+      }
+
+      var bridges = [];
+      if (meNeedsBridge) {
+          N.forEach(function(bridge) {
+              if (bridge === me || bridge === partner) return;
+              var bShift = RAW_SCHEDULE[bridge][dayIdx];
+              if (!bShift || is33(bShift) || bShift.charAt(0) !== theirShift.charAt(0)) return;
+
+              if (!checkSequence(bridge, theirShift, dayIdx) && checkEligibility(bridge, theirShift).ok &&
+                  !checkSequence(me, bShift, dayIdx) && checkEligibility(me, bShift).ok) {
+                  bridges.push({ name: bridge, shift: bShift });
+              }
+          });
+          if (bridges.length === 0) {
+              results.blocked.push({ partner: partner, theirShift: theirShift, reason: "Needs 33kV bridge, but no 11kV mediators available." });
+              return;
+          }
+      }
+
+      var returnDays = [];
+      D.forEach(function(dObj, idx) {
+          if (idx === dayIdx || idx === 0) return;
+          var myOrigShift = RAW_SCHEDULE[me][idx];
+          if (!myOrigShift) return; 
+          var pShiftOnOd = RAW_SCHEDULE[partner][idx];
+          if (pShiftOnOd) return; 
+
+          if (!checkSequence(partner, myOrigShift, idx) && checkEligibility(partner, myOrigShift).ok) {
+              returnDays.push({ 
+                  date: dObj.label, 
+                  myNewShift: 'OFF',
+                  theirNewShift: myOrigShift,
+                  isCComp: false 
+              });
+          }
+      });
+
+      if (returnDays.length > 0) {
+          if (meCanTakeDirect) {
+              results.direct.push({ partner: partner, theirShift: theirShift, giveDays: returnDays });
+          } else {
+              results.bridged.push({ partner: partner, theirShift: theirShift, bridges: bridges, giveDays: returnDays });
+          }
+      } else {
+          results.blocked.push({ partner: partner, theirShift: theirShift, reason: "You can cover them, but they cannot return any of your off days." });
+      }
+  });
+  return results;
+}
+
+function renderContextGrid(me, partner, dayIdx, myNewShift, theirNewShift) {
+  var mPrev = RAW_SCHEDULE[me][dayIdx - 1] || 'OFF';
+  var mNext = RAW_SCHEDULE[me][dayIdx + 1] || 'OFF';
+  var pPrev = RAW_SCHEDULE[partner][dayIdx - 1] || 'OFF';
+  var pNext = RAW_SCHEDULE[partner][dayIdx + 1] || 'OFF';
+  
+  return `<div class="ctx" style="display:flex; flex-direction:column; gap:8px;">
+      <div style="display:grid; grid-template-columns: 60px 1fr 20px 1fr 20px 1fr; align-items:center; text-align:center; font-size:11px;">
+          <span style="color:var(--mt);text-align:left"></span>
+          <span style="color:var(--mt);font-size:9px">Pre</span>
+          <span></span>
+          <span style="color:var(--mt);font-size:9px">Shift</span>
+          <span></span>
+          <span style="color:var(--mt);font-size:9px">Post</span>
+      </div>
+      <div style="display:grid; grid-template-columns: 60px 1fr 20px 1fr 20px 1fr; align-items:center; text-align:center; font-size:11px;">
+          <span style="color:var(--mt);text-align:left">YOU:</span>
+          <span>${bdg(mPrev)}</span>
+          <span style="color:var(--mt)">&#8594;</span>
+          <span style="box-shadow:0 0 0 1px var(--gr); border-radius:4px; padding:2px 0">${bdg(myNewShift)}</span>
+          <span style="color:var(--mt)">&#8594;</span>
+          <span>${bdg(mNext)}</span>
+      </div>
+      <div style="display:grid; grid-template-columns: 60px 1fr 20px 1fr 20px 1fr; align-items:center; text-align:center; font-size:11px;">
+          <span style="color:var(--mt);text-align:left;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55px;" title="${partner}">${partner}:</span>
+          <span>${bdg(pPrev)}</span>
+          <span style="color:var(--mt)">&#8594;</span>
+          <span style="box-shadow:0 0 0 1px var(--ac); border-radius:4px; padding:2px 0">${bdg(theirNewShift)}</span>
+          <span style="color:var(--mt)">&#8594;</span>
+          <span>${bdg(pNext)}</span>
+      </div>
+  </div>`;
+}
+
+function renderGiveDays(me, partner, giveDays, isOffWorkMode) {
+  if (!giveDays || giveDays.length === 0) return '';
+  var title = isOffWorkMode ? "RETURN DAY (THEY COVER YOU)" : "GIVE DAY (YOU COVER THEM)";
+  var h = "<div class=\"sec-hdr\" style=\"margin-top:12px\">" + title + " <span class=\"cnt g\">" + giveDays.length + "</span></div>";
+  h += "<table class=\"gtable\"><tr><th>Date</th><th>Pre &#8594; Shift &#8594; Post</th></tr>";
+  giveDays.forEach(function(g) {
+      var dIdx = D.findIndex(function(d) { return d.label === g.date; });
+      var mPrev = RAW_SCHEDULE[me][dIdx - 1] || 'OFF';
+      var mNext = RAW_SCHEDULE[me][dIdx + 1] || 'OFF';
+      var pPrev = RAW_SCHEDULE[partner][dIdx - 1] || 'OFF';
+      var pNext = RAW_SCHEDULE[partner][dIdx + 1] || 'OFF';
+
+      h += "<tr " + (g.isCComp ? "class=\"ccomp\"" : "") + ">";
+      h += "<td class=\"gdate-cell\">" + g.date + "<br><span style='color:var(--mt); font-weight:normal; font-size:9px'>" + D[dIdx].day + "</span>" + (g.isCComp ? ' <br><span style="color:var(--or)">&#9733; C3 Comp</span>' : '') + "</td>";
+
+      h += "<td>";
+      h += "<div style='display:flex; align-items:center; margin-bottom:4px; font-size:11px;'><span style='width:60px;color:var(--mt)'>YOU:</span> " + bdg(mPrev) + " <span style='color:var(--mt)'>&#8594;</span> " + bdg(g.myNewShift) + " <span style='color:var(--mt)'>&#8594;</span> " + bdg(mNext) + "</div>";
+      h += "<div style='display:flex; align-items:center; font-size:11px;'><span style='width:60px;color:var(--mt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='"+partner+"'>" + partner + ":</span> " + bdg(pPrev) + " <span style='color:var(--mt)'>&#8594;</span> " + bdg(g.theirNewShift) + " <span style='color:var(--mt)'>&#8594;</span> " + bdg(pNext) + "</div>";
+      h += "</td>";
+      h += "</tr>";
+  });
+  h += "</table>";
+  return h;
+}
+
+function renderCCompDays(me, partner, compDays) {
+  if (!compDays || compDays.length === 0) return '';
+  var h = "<div class=\"sec-hdr\" style=\"margin-top:12px; color:var(--or)\">OPTIONAL C-SHIFT COMPENSATION <span class=\"cnt\" style=\"background:var(--or);color:#000\">" + compDays.length + "</span></div>";
+  h += "<table class=\"gtable\"><tr><th>Date</th><th>Pre &#8594; Shift &#8594; Post</th></tr>";
+  compDays.forEach(function(g) {
+      var dIdx = D.findIndex(function(d) { return d.label === g.date; });
+      var mPrev = RAW_SCHEDULE[me][dIdx - 1] || 'OFF';
+      var mNext = RAW_SCHEDULE[me][dIdx + 1] || 'OFF';
+      var pPrev = RAW_SCHEDULE[partner][dIdx - 1] || 'OFF';
+      var pNext = RAW_SCHEDULE[partner][dIdx + 1] || 'OFF';
+
+      h += "<tr>";
+      h += "<td class=\"gdate-cell\">" + g.date + "<br><span style='color:var(--mt); font-weight:normal; font-size:9px'>" + D[dIdx].day + "</span></td>";
+      h += "<td>";
+      h += "<div style='display:flex; align-items:center; margin-bottom:4px; font-size:11px;'><span style='width:60px;color:var(--mt)'>YOU:</span> " + bdg(mPrev) + " <span style='color:var(--mt)'>&#8594;</span> " + bdg(g.myNewShift) + " <span style='color:var(--mt)'>&#8594;</span> " + bdg(mNext) + "</div>";
+      h += "<div style='display:flex; align-items:center; font-size:11px;'><span style='width:60px;color:var(--mt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='"+partner+"'>" + partner + ":</span> " + bdg(pPrev) + " <span style='color:var(--mt)'>&#8594;</span> " + bdg(g.theirNewShift) + " <span style='color:var(--mt)'>&#8594;</span> " + bdg(pNext) + "</div>";
+      h += "</td>";
+      h += "</tr>";
+  });
+  h += "</table>";
+  return h;
+}
+
+function renderResults(me, dayIdx, r, mode) {
+  var h = "";
+  var myShift = RAW_SCHEDULE[me][dayIdx] || 'OFF';
+  h += "<div class=\"ibox\"><b>YOUR SHIFT:</b> " + bdg(myShift) + " on " + D[dayIdx].label + "</div>";
+
+  if (r.direct && r.direct.length > 0) {
+      h += "<div class=\"sec-hdr\">&#10003; Direct Swaps <span class=\"cnt g\">" + r.direct.length + "</span></div>";
+      r.direct.forEach(function(o) {
+          h += "<div class=\"rc valid\"><div class=\"rc-name\">" + o.partner + "</div>";
+          var shiftITake, shiftTheyTake;
+          if (mode === 'shift') { shiftITake = o.theirShift; shiftTheyTake = myShift; }
+          else if (mode === 'off_work') { shiftITake = o.theirShift; shiftTheyTake = 'OFF'; }
+          else { shiftITake = 'OFF'; shiftTheyTake = myShift; }
+          
+          h += "<div style=\"font-size:12px; margin-bottom:6px\">Takes your " + bdg(myShift) + " &nbsp;&#8644;&nbsp; You take " + bdg(o.theirShift) + "</div>";
+          h += renderContextGrid(me, o.partner, dayIdx, shiftITake, shiftTheyTake);
+          if (o.giveDays) h += renderGiveDays(me, o.partner, o.giveDays, mode === 'off_work');
+          if (mode === 'shift' && o.cCompDays && o.cCompDays.length > 0) h += renderCCompDays(me, o.partner, o.cCompDays);
+          h += "</div>";
+      });
+  }
+
+  if (r.bridged && r.bridged.length > 0) {
+      h += "<div class=\"sec-hdr\">&#128260; 33kV Mediator Needed <span class=\"cnt y\">" + r.bridged.length + "</span></div>";
+      r.bridged.forEach(function(o) {
+          h += "<div class=\"rc warn\"><div class=\"rc-name\">" + o.partner + "</div>";
+          
+          var shiftITake, shiftTheyTake;
+          if (mode === 'shift') { shiftITake = o.bridges[0].shift; shiftTheyTake = myShift; }
+          else if (mode === 'off_work') { shiftITake = o.bridges[0].shift; shiftTheyTake = 'OFF'; }
+          else { shiftITake = 'OFF'; shiftTheyTake = o.bridges[0].shift; }
+
+          h += "<div style=\"font-size:12px; margin-bottom:6px\">Takes your " + bdg(myShift) + " &nbsp;&#8644;&nbsp; You take " + bdg(o.theirShift) + "</div>";
+          h += "<div class=\"med-box\"><div class=\"med-title\">Available Mediators</div>";
+          o.bridges.forEach(function(b) {
+              h += "<div class=\"med-row\"><b>" + b.name + "</b> " + bdg(b.shift) + " <span style='color:var(--mt)'>&#8594; covers 33kV, freeing 11kV</span></div>";
+          });
+          h += "</div>";
+          h += renderContextGrid(me, o.partner, dayIdx, shiftITake, shiftTheyTake);
+          if (o.giveDays) h += renderGiveDays(me, o.partner, o.giveDays, mode === 'off_work');
+          if (mode === 'shift' && o.cCompDays && o.cCompDays.length > 0) h += renderCCompDays(me, o.partner, o.cCompDays);
+          h += "</div>";
+      });
+  }
+  
+  if (r.deskSwap && r.deskSwap.length > 0) {
+      h += "<div class=\"sec-hdr\">&#8646; Same-Shift Desk Swaps <span class=\"cnt g\">" + r.deskSwap.length + "</span></div>";
+      r.deskSwap.forEach(function(o) {
+          h += "<div class=\"rc inf\"><div class=\"rc-name\">" + o.partner + "</div>";
+          h += "<div style=\"font-size:12px\">Swap your 11kV desk for their " + bdg(o.theirShift) + " desk (Same Shift Time)</div>";
+          if (mode === 'shift' && o.cCompDays && o.cCompDays.length > 0) h += renderCCompDays(me, o.partner, o.cCompDays);
+          h += "</div>";
+      });
+  }
+
+  if (r.blocked && r.blocked.length > 0) {
+      h += "<details style=\"margin-top:10px\"><summary>" + r.blocked.length + " blocked / ineligible</summary>";
+      r.blocked.forEach(function(o) {
+          h += "<div style=\"padding:5px 0;border-bottom:1px solid var(--brd);font-size:11px\"><b style=\"color:var(--mt)\">" + o.partner + "</b> " + bdg(o.theirShift) + " <span style=\"color:#f78166\">&#10005; " + o.reason + "</span></div>";
+      });
+      h += "</details>";
+  }
+
+  if ((!r.direct || !r.direct.length) && (!r.bridged || !r.bridged.length) && (!r.deskSwap || !r.deskSwap.length)) {
+      if (!r.blocked || !r.blocked.length) h += "<div class=\"empty\">No swaps found.</div>";
+  }
+
+  document.getElementById('resultsOut').innerHTML = h;
+}
+
+// ── UI / EDIT LOGIC ───────────────────────────────────────────────────────
+function switchTab(name){
+  ["sched","results","log","rules"].forEach(function(t){
+    document.getElementById("ctab-"+t).classList.remove("act");
+    document.getElementById("cpanel-"+t).classList.remove("act");
+  });
+  document.getElementById("ctab-"+name).classList.add("act");
+  document.getElementById("cpanel-"+name).classList.add("act");
+}
+
+function toggleEditMode() {
+    isEditMode = !isEditMode;
+    var btn = document.getElementById("editToggleBtn");
+    if (isEditMode) {
+        btn.innerHTML = "🟢 Edit Mode: ON";
+        btn.style.background = "var(--s1)";
+        btn.style.borderColor = "var(--gr)";
+        btn.style.color = "var(--gr)";
+    } else {
+        btn.innerHTML = "✏️ Enable Edit Mode";
+        btn.style.background = "";
+        btn.style.borderColor = "";
+        btn.style.color = "";
+    }
+}
+
+function handleCellClick(person, dayIdx, dateLabel) {
+    if (isEditMode) {
+        editTargetPerson = person;
+        editTargetDay = dayIdx;
+        var cur = RAW_SCHEDULE[person][dayIdx];
+        document.getElementById("editInput").value = cur || "";
+        document.getElementById("editTitle").innerText = "Edit " + person + " (" + dateLabel + ")";
+        document.getElementById("editModal").style.display = "flex";
+        document.getElementById("editInput").focus();
+    } else {
+        if (person === document.getElementById("selName").value) {
+            document.getElementById('selDate').value = D[dayIdx].label;
+            var myShift = RAW_SCHEDULE[person][dayIdx];
+            var selType = document.getElementById("selType");
+            
+            if (!myShift) {
+                selType.value = "off_work";
+            } else {
+                if (selType.value === "off_work") {
+                    selType.value = "shift"; 
+                }
+            }
+            onDateChange();
+        }
+    }
+}
+
+function saveEdit() {
+    var val = document.getElementById("editInput").value.trim().toUpperCase();
+    if (val === "OFF" || val === "L" || val === "") val = null;
+    
+    var oldVal = RAW_SCHEDULE[editTargetPerson][editTargetDay] || "OFF";
+    var newVal = val || "OFF";
+
+    if (oldVal !== newVal) {
+        RAW_SCHEDULE[editTargetPerson][editTargetDay] = val;
+        var now = new Date();
+        var tsString = now.toLocaleDateString() + " " + now.toLocaleTimeString();
+        
+        CHANGE_LOG.unshift({
+            ts: tsString,
+            type: 'single',
+            person: editTargetPerson,
+            date: D[editTargetDay].label,
+            oldS: oldVal,
+            newS: newVal
+        });
+        renderLog();
+        updateMutualSwapOperators();
+    }
+
+    document.getElementById("editModal").style.display = "none";
+    
+    onNameChange();
+    if (document.getElementById('selDate').value) {
+        findOptions();
+    }
+}
+
+function closeEdit() {
+    document.getElementById("editModal").style.display = "none";
+}
+
+function populateSwapForm() {
+    var d1 = document.getElementById("msD1"), d2 = document.getElementById("msD2");
+    d1.innerHTML = "<option value='-1'>-- Date 1 --</option>";
+    d2.innerHTML = "<option value='-1'>-- Date 2 (Optional) --</option>";
+    
+    for(var i=1; i<D.length; i++){
+        d1.add(new Option(D[i].label, i));
+        d2.add(new Option(D[i].label, i));
+    }
+    updateMutualSwapOperators();
+}
+
+function updateMutualSwapOperators() {
+    var p1 = document.getElementById("msP1");
+    var p2 = document.getElementById("msP2");
+    var d1 = parseInt(document.getElementById("msD1").value);
+    
+    var val1 = p1.value;
+    var val2 = p2.value;
+
+    p1.innerHTML = ""; p2.innerHTML = "";
+    
+    N.forEach(function(n) {
+        var shiftTxt = "";
+        if (d1 > 0 && !isNaN(d1)) {
+            var s = RAW_SCHEDULE[n][d1] || "OFF";
+            shiftTxt = " (" + s + ")";
+        }
+        p1.add(new Option(n + shiftTxt, n));
+        p2.add(new Option(n + shiftTxt, n));
+    });
+
+    if (val1) p1.value = val1;
+    if (val2) p2.value = val2;
+    if (!p2.value && N.length > 1) p2.selectedIndex = 1;
+}
+
+function applyMutualSwap() {
+    var p1 = document.getElementById("msP1").value;
+    var p2 = document.getElementById("msP2").value;
+    var d1 = parseInt(document.getElementById("msD1").value);
+    var d2 = parseInt(document.getElementById("msD2").value);
+
+    if (!p1 || !p2 || p1 === p2) { alert("Select two different operators."); return; }
+    if (d1 < 1 || isNaN(d1)) { alert("Select at least Date 1."); return; }
+
+    var d1Label = D[d1].label;
+    var p1OldD1 = RAW_SCHEDULE[p1][d1] || "OFF";
+    var p2OldD1 = RAW_SCHEDULE[p2][d1] || "OFF";
+
+    RAW_SCHEDULE[p1][d1] = (p2OldD1 === "OFF") ? null : p2OldD1;
+    RAW_SCHEDULE[p2][d1] = (p1OldD1 === "OFF") ? null : p1OldD1;
+
+    var msg = `<b>${p1}</b> and <b>${p2}</b> swapped on <b>${d1Label}</b> (${bdg(p1OldD1)} &harr; ${bdg(p2OldD1)})`;
+
+    if (d2 > 0 && d2 !== d1) {
+        var d2Label = D[d2].label;
+        var p1OldD2 = RAW_SCHEDULE[p1][d2] || "OFF";
+        var p2OldD2 = RAW_SCHEDULE[p2][d2] || "OFF";
+        
+        RAW_SCHEDULE[p1][d2] = (p2OldD2 === "OFF") ? null : p2OldD2;
+        RAW_SCHEDULE[p2][d2] = (p1OldD2 === "OFF") ? null : p1OldD2;
+        
+        msg += `<br>and on <b>${d2Label}</b> (${bdg(p1OldD2)} &harr; ${bdg(p2OldD2)})`;
+    }
+
+    var now = new Date();
+    CHANGE_LOG.unshift({
+        ts: now.toLocaleDateString() + " " + now.toLocaleTimeString(),
+        type: 'mutual',
+        msg: msg
+    });
+
+    renderLog();
+    updateMutualSwapOperators();
+    onNameChange(); 
+    if(document.getElementById('selDate').value) findOptions();
+    
+    alert("Mutual swap successfully applied and logged!");
+    switchTab('log');
+}
+
+function renderLog() {
+    var h = "<div class='sec-hdr'>Recent Session Changes <span class='cnt g'>" + CHANGE_LOG.length + "</span></div>";
+    if (CHANGE_LOG.length === 0) {
+        h += "<div class='empty'>No manual changes made yet. Enable Edit Mode or log a mutual exchange to track updates.</div>";
+    } else {
+        h += "<table class='gtable'><tr><th style='width:120px'>Timestamp</th><th>Modification</th></tr>";
+        CHANGE_LOG.forEach(function(log) {
+            h += "<tr>";
+            h += "<td style='color:var(--mt);font-size:10px;vertical-align:top'>" + log.ts + "</td>";
+            if (log.type === 'mutual') {
+                h += "<td style='line-height:1.6'>" + log.msg + "</td>";
+            } else {
+                h += "<td><b style='color:var(--txt)'>" + log.person + "</b> on <b style='color:var(--gr)'>" + log.date + "</b>: " + bdg(log.oldS) + " <span style='color:var(--mt)'>&rarr;</span> " + bdg(log.newS) + "</td>";
+            }
+            h += "</tr>";
+        });
+        h += "</table>";
+    }
+    document.getElementById("logOut").innerHTML = h;
+}
+
+function exportExcel() {
+  var aoa = [];
+  var headerDates = [null, null];
+  var headerDays = [null, "NAME"];
+  
+  for (var i = 1; i < D.length; i++) {
+    headerDates.push(D[i].label);
+    headerDays.push(D[i].day);
+  }
+  aoa.push(headerDates);
+  aoa.push(headerDays);
+  
+  N.forEach(function(person) {
+    var row = [null, person];
+    for (var i = 1; i < D.length; i++) {
+      row.push(RAW_SCHEDULE[person][i] || ""); 
+    }
+    aoa.push(row);
+  });
+  
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Table 1");
+  XLSX.writeFile(wb, "PSCC_Updated_Schedule.xlsx");
+}
+
+function findOptions(){
+  var me = document.getElementById("selName").value;
+  var dl = document.getElementById("selDate").value;
+  var type = document.getElementById("selType").value;
+  var desired = document.getElementById("selDesired").value || null;
+  if(!me){ alert("Select your name."); return; }
+  if(!dl){ alert("Select a date."); return; }
+  
+  var dayIdx = D.findIndex(function(d) { return d.label === dl; });
+  if (dayIdx < 0) return;
+
+  switchTab("results");
+  var r;
+  if(type==="shift"){
+    r = doShift(me, dayIdx, desired);
+  } else if(type==="off_want"){
+    r = doOffWant(me, dayIdx, desired);
+  } else {
+    r = doOffWork(me, dayIdx, desired);
+  }
+
+  if(r.error){ 
+      document.getElementById('resultsOut').innerHTML = "<div class=\"wbox\">"+r.error+"</div>"; 
+      return; 
+  }
+  renderResults(me, dayIdx, r, type);
+}
+
+function renderSched(me){
+  var aC=0, bC=0, cC=0, oC=0, i, d, sh, isOff, l, desk, cls, h;
+  for(i=1; i<D.length; i++){
+    sh = RAW_SCHEDULE[me][i];
+    if(!sh){oC++;continue;}
+    if(sh.charAt(0)==="A") aC++; else if(sh.charAt(0)==="B") bC++; else if(sh.charAt(0)==="C") cC++;
+  }
+  h  = "<div class=\"stats\">";
+  h += "<div class=\"stat-card\"><div class=\"stat-val\" style=\"color:var(--gr)\">"+aC+"</div><div class=\"stat-lbl\">A-Shifts</div></div>";
+  h += "<div class=\"stat-card\"><div class=\"stat-val\">"+bC+"</div><div class=\"stat-lbl\">B-Shifts</div></div>";
+  h += "<div class=\"stat-card\"><div class=\"stat-val\" style=\"color:var(--or)\">"+cC+"</div><div class=\"stat-lbl\">C-Shifts</div></div>";
+  h += "<div class=\"stat-card\"><div class=\"stat-val\" style=\"color:var(--gr)\">"+oC+"</div><div class=\"stat-lbl\">Offs</div></div>";
+  h += "</div>";
+  h += "<p style=\"font-size:11px;color:var(--mt);margin-bottom:10px\">Click any day card to instantly find swap options</p>";
+  h += "<div class=\"sgrid\">";
+  for(i=1; i<D.length; i++){
+    d = D[i]; sh = RAW_SCHEDULE[me][i]; isOff = !sh; l = sh ? sh.charAt(0) : ""; desk = sh ? sh.slice(1) : "";
+    cls = "day-card" + (isOff ? " off" : "") + (l ? " s"+l : "");
+    h += "<div class=\""+cls+"\" onclick=\"handleCellClick('" + me + "', " + i + ", '" + d.label + "')\">";
+    h += "<div class=\"dc-date\">"+d.label+"</div>";
+    h += "<div class=\"dc-day\">"+d.day+"</div>";
+    h += "<div class=\"dc-sh\">"+(isOff?"OFF":l)+"</div>";
+    if(!isOff) h += "<div class=\"dc-desk\">"+desk+"</div>";
+    h += "</div>";
+  }
+  h += "</div>";
+  document.getElementById("schedOut").innerHTML = h;
+}
+
+function onDateChange() {
+  findOptions();
+}
+
+function onNameChange(){
+  var me = document.getElementById("selName").value;
+  renderSched(me); 
+  
+  var sel = document.getElementById("selDate"), i, d, sh, o;
+  sel.innerHTML = "<option value=\"\">-- Pick a date --</option>";
+  for(i=1; i<D.length; i++){
+    d = D[i]; sh = RAW_SCHEDULE[me][i] || "OFF";
+    o = document.createElement("option");
+    o.value = d.label; o.text = d.label+" ("+d.day+") - "+sh;
+    sel.appendChild(o);
+  }
+  
+  var el = document.getElementById("sidebarInfo");
+  var offs=[], working=0;
+  for(i=1; i<D.length; i++){ 
+      var ts = RAW_SCHEDULE[me][i]; 
+      if(!ts) offs.push(D[i].label); else working++; 
+  }
+  el.innerHTML = "<b>"+me+"</b><br>" +
+    "Working: <span style=\"color:var(--ac)\">"+working+" days</span><br>" +
+    "Off days: <span style=\"color:var(--gr)\">"+offs.length+"</span><br>" +
+    (EA.has(me) ? "<span style=\"color:var(--pu)\">&#10003; 33kV Eligible</span><br>" : "") +
+    (E1.has(me) ? "<span style=\"color:var(--yw)\">&#10003; Desk-1 Certified</span><br>" : "");
+}
+
+function hideOverlay(){ document.getElementById("uploadOverlay").style.display="none"; }
+
+window.onload = function(){
+  try {
+      loadBuiltin();
+      hideOverlay();
+      var sel=document.getElementById("selName"), i, o;
+      sel.innerHTML="";
+      N.forEach(function(n) {
+          o=document.createElement("option"); o.value=n; o.text=n; sel.appendChild(o);
+      });
+      for(i=0; i<N.length; i++){ if(N[i].indexOf("ABHISHEK")>=0){ sel.value=N[i]; break; } }
+      onNameChange();
+  } catch(e) {
+      console.error(e);
+      document.getElementById("uploadStatus").textContent = "Startup Error: " + e.message;
+      document.getElementById("uploadStatus").style.display = "block";
+  }
+};
+</script>
+</body>
+</html>
